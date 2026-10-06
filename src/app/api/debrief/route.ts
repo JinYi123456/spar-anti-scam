@@ -1,0 +1,139 @@
+import { NextResponse } from "next/server";
+import { chat, parseJsonLoose, llmAvailable } from "@/lib/llm";
+import { DEBRIEF_SYSTEM, debriefUser } from "@/lib/prompts";
+import type { DebriefScore, DuelTurn, TwinProfile } from "@/lib/types";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
+function offlineScore(history: DuelTurn[], leaked: string[], endReason?: string): DebriefScore {
+  const userTurns = history.filter((m) => m.role === "user");
+
+  // Good defensive behaviors we can detect locally.
+  let points = 50;
+  const strengths: string[] = [];
+  const mistakes: DebriefScore["mistakes"] = [];
+
+  const goodRe: { re: RegExp; pts: number; note: string }[] = [
+    { re: /\b(hang(?:ging)? up|ending (?:this )?call|goodbye|i'?m done)\b/i, pts: 14, note: "You ended the conversation on your terms — the single strongest move." },
+    { re: /\b(call (?:you|them|the )?back|official (?:number|line)|number on|verify(?:ying)?)\b/i, pts: 12, note: "You pushed verification through an independent channel. Textbook." },
+    { re: /\b(who (?:are|is) you|prove|how do i know|what'?s your (?:name|department|id))\b/i, pts: 8, note: "You demanded proof of identity instead of accepting the frame." },
+    { re: /\b(family|friend|let me (?:ask|check)|second opinion)\b/i, pts: 8, note: "You broke the isolation — scams die in the presence of other people." },
+    { re: /\b(no\.?|not (?:interested|doing|falling)|stop)\b/i, pts: 6, note: "You said a clear no. Pressure feeds on vagueness." },
+  ];
+  for (const g of goodRe) {
+    const hit = userTurns.find((t) => g.re.test(t.text));
+    if (hit) {
+      points += g.pts;
+      strengths.push(g.note);
+    }
+  }
+
+  // Risky behaviors.
+  const riskyRe: { re: RegExp; problem: string; better: string }[] = [
+    { re: /\b(why|what (?:do you mean|happened|is this about))\?/i, problem: "Open questions kept the conversation alive and gave the operator material.", better: "Questions are fine in person — here they extended the call. State one fact: 'I'll verify and call back.'" },
+    { re: /\b(i'?m (?:scared|worried|confused)|please help|oh no|what should i do)\b/i, problem: "Visible fear told the operator their lever was working.", better: "Keep your voice flat. Fear is fuel for them; neutrality starves the fire." },
+    { re: /\b(ok(?:ay)?|sure|alright|fine)\b[!.]?\s*$/i, problem: "Agreement moves moved you down their script.", better: "Replace agreement with delay: 'I'll think about it' ends more pressure than it creates." },
+    { re: /\b(my name is|i am [a-z]+|this is [a-z]+)\b/i, problem: "You volunteered personal details.", better: "They contacted YOU. They should already know who you are." },
+  ];
+  for (const r of riskyRe) {
+    const hit = userTurns.find((t) => r.re.test(t.text));
+    if (hit) {
+      points -= 10;
+      mistakes.push({ turn: userTurns.indexOf(hit) + 1, quote: hit.text.slice(0, 80), problem: r.problem, better: r.better });
+    }
+  }
+
+  if (leaked.length > 0) {
+    points -= 30;
+    mistakes.unshift({
+      turn: 0,
+      quote: `(leaked: ${leaked.join(", ")})`,
+      problem: "Sensitive information reached the attacker. In a real event this is the moment money leaves your account.",
+      better: "Codes, passwords, card numbers and remote access NEVER go to someone who called you. End the contact immediately.",
+    });
+  }
+
+  if (endReason === "defused" || endReason === "exposed") {
+    points += 12;
+    strengths.push("You shut the operation down before it reached its goal.");
+  }
+
+  const overall = Math.max(0, Math.min(100, Math.round(points)));
+  const grade = overall >= 90 ? "S" : overall >= 80 ? "A" : overall >= 65 ? "B" : overall >= 45 ? "C" : "D";
+
+  const lessons = [
+    "Urgency is the tell: real problems survive a phone call made by you, to a number you chose.",
+    leaked.length
+      ? "A one-time code is a door key. Anyone asking for it already has your username."
+      : "Slow is safe: every minute of delay is a minute the scam loses leverage.",
+    "Verify on a channel YOU choose — never the one they handed you.",
+  ];
+
+  return { overall, grade, strengths: strengths.slice(0, 3), mistakes: mistakes.slice(0, 4), lessons };
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json()) as {
+      twin?: TwinProfile;
+      history?: DuelTurn[];
+      tacticsSeen?: string[];
+      leaked?: string[];
+      endReason?: string;
+    };
+    if (!body.twin || !Array.isArray(body.history)) {
+      return NextResponse.json({ error: "Missing twin or history." }, { status: 400 });
+    }
+
+    const leaked = body.leaked ?? [];
+    const offline = offlineScore(body.history, leaked, body.endReason);
+
+    if (llmAvailable()) {
+      try {
+        const { text: raw } = await chat({
+          system: DEBRIEF_SYSTEM,
+          user: debriefUser({
+            twin: body.twin,
+            history: body.history,
+            tacticsSeen: body.tacticsSeen ?? [],
+            compromised: leaked.length > 0,
+            leaked,
+            endReason: body.endReason,
+          }),
+          route: "debrief",
+          json: true,
+          temperature: 0.5,
+          maxTokens: 800,
+        });
+        const score = parseJsonLoose<DebriefScore>(raw);
+        if (score && typeof score.overall === "number") {
+          return NextResponse.json({
+            score: {
+              overall: Math.max(0, Math.min(100, Math.round(score.overall))),
+              grade: String(score.grade ?? offline.grade).slice(0, 2).toUpperCase(),
+              strengths: (score.strengths ?? offline.strengths).slice(0, 3).map(String),
+              mistakes: (score.mistakes ?? []).slice(0, 4).map((m) => ({
+                turn: Number(m?.turn) || 0,
+                quote: String(m?.quote ?? "").slice(0, 120),
+                problem: String(m?.problem ?? "").slice(0, 220),
+                better: String(m?.better ?? "").slice(0, 200),
+              })),
+              lessons: (score.lessons ?? offline.lessons).slice(0, 4).map(String),
+            },
+            engine: "llm",
+          });
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+
+    return NextResponse.json({ score: offline, engine: llmAvailable() ? "llm" : "offline" });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Debrief failed" },
+      { status: 500 },
+    );
+  }
+}
