@@ -616,6 +616,7 @@ export default function SparApp() {
   const [endReason, setEndReason] = useState<string | undefined>(undefined);
   const [score, setScore] = useState<DebriefScore | null>(null);
   const [busy, setBusy] = useState(false);
+  const autoDebrief = useRef(false);
 
   useEffect(() => {
     fetch("/api/health")
@@ -678,6 +679,7 @@ export default function SparApp() {
       setLeaked([]);
       setEndReason(undefined);
       setScore(null);
+      autoDebrief.current = false;
       setStage("duel");
     } catch {
       setStage("report");
@@ -727,6 +729,8 @@ export default function SparApp() {
   );
 
   const endDuel = useCallback(async () => {
+    if (autoDebrief.current) return;
+    autoDebrief.current = true;
     setBusy(true);
     setStage("debrief-wait");
     try {
@@ -761,7 +765,15 @@ export default function SparApp() {
     setScore(null);
     setLeaked([]);
     setEndReason(undefined);
+    autoDebrief.current = false;
   };
+
+  // When a duel auto-ends (leak detected / max turns), grade automatically.
+  useEffect(() => {
+    if (stage === "debrief-wait" && !busy) {
+      endDuel();
+    }
+  }, [stage, busy, endDuel]);
 
   // "debrief-wait": brief transition screen
   if (stage === "debrief-wait") {

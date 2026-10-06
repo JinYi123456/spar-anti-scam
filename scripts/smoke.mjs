@@ -41,15 +41,13 @@ for (let turn = 1; turn <= 12 && !ended; turn++) {
       : "This is a scam. I'm not sending anything. Goodbye.";
   const r = await post("/api/duel", { twin: forge.twin, history, turnCount: history.length });
   history.push({ role: "twin", text: r.reply, rung: r.rung, newTactics: r.tactics });
-  const userTurn = { role: "user", text: userMsg };
-  history.push(userTurn);
+  history.push({ role: "user", text: userMsg });
   state = { pressure: r.pressure, level: r.level };
   tacticsSeen.push(...(r.tactics ?? []));
   if (r.leaked?.length) leakedAll.push(...r.leaked);
   ended = r.ended;
   console.log(`  [duel t${turn}] rung=${r.rung} pressure=${r.pressure} ${r.level} engine=${r.engine} ended=${r.ended}`);
   console.log(`    twin: ${r.reply.slice(0, 90)}…`);
-  if (turn < 3) history.push(userTurn);
 }
 
 // debrief
