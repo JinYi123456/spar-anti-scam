@@ -8,13 +8,18 @@ import type { DriftLogEntry } from "./types";
 const BASE_URL = process.env.FEATHERLESS_BASE_URL ?? "https://api.featherless.ai/v1";
 const API_KEY = process.env.FEATHERLESS_API_KEY ?? "";
 
-/** Fallback chain: strong generalist → fast generalist. First that answers wins. */
+/**
+ * Fallback chain — every model verified live against the Featherless catalog.
+ * Order: strongest non-reasoning generalist first (reasoning models like
+ * Qwen3 burn max_tokens on <think> blocks and return empty content, so they
+ * are last-resort only). First model that answers wins.
+ */
 export const MODEL_CHAIN = [
   process.env.FEATHERLESS_MODEL,          // user override
-  "Qwen/Qwen3-32B",
   "deepseek-ai/DeepSeek-V3-0324",
-  "meta-llama/Meta-Llama-3.3-70B-Instruct",
+  "unsloth/Llama-3.3-70B-Instruct",
   "mistralai/Mistral-Small-24B-Instruct-2501",
+  "Qwen/Qwen3-32B",
 ].filter(Boolean) as string[];
 
 export const PRIMARY_MODEL = MODEL_CHAIN[0];
@@ -72,7 +77,14 @@ async function callModel(model: string, opts: ChatOptions, started: number): Pro
     const data = (await res.json()) as {
       choices?: { message?: { content?: string } }[];
     };
-    const content = data.choices?.[0]?.message?.content;
+    interface Msg { content?: string; reasoning?: string }
+    const msg = (data.choices?.[0]?.message ?? {}) as Msg;
+    // Reasoning models emit <think>…</think>; strip it, and if the answer
+    // landed in the `reasoning` field instead of `content`, rescue it.
+    const stripThink = (s: string) => s.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    const content =
+      stripThink(msg.content ?? "") ||
+      stripThink(msg.reasoning ?? "").replace(/<think>/g, "").trim();
     if (!content) throw new Error("empty completion");
     log({ ts: new Date().toISOString(), model, route: opts.route, ok: true, ms: Date.now() - started });
     return content;

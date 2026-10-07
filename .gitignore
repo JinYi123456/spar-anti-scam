@@ -44,3 +44,6 @@ next-env.d.ts
 PRIVATE-NOTES.md
 .env.local
 .freebuff/
+
+# but keep the safe template
+!.env.example
