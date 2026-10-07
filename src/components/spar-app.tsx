@@ -51,14 +51,60 @@ const SAMPLES: { label: string; text: string }[] = [
   },
 ];
 
+/* Hidden drill bank — wider than the visible chips so Daily Drill stays fresh. */
+const DAILY_SAMPLES: { label: string; text: string }[] = [
+  ...SAMPLES,
+  {
+    label: "Fake tech support",
+    text: "URGENT SECURITY NOTICE — This is Windows Defender Support. We detected 47 viruses and an active hacker session on your PC. Do NOT shut down your computer. A certified technician will call you within 10 minutes to guide you through removal. Your Windows license will be suspended if unresolved today.",
+  },
+  {
+    label: "Task-scam gig",
+    text: "Congratulations, applicant #2231! You've been pre-approved for our remote 'Order Optimization Assistant' role, $380/day, no experience needed. To activate your shift today, complete 3 trial orders using your own card — fully reimbursed plus 15% commission. Confirm: jobs-portal-verify.com/onboard",
+  },
+  {
+    label: "Fake police warrant",
+    text: "This is Sgt. R. Daniels, Metro Police Financial Crimes Unit, badge 4471. There is a warrant linked to your SSN for unpaid fines, but you can resolve it today by posting a clearance bond. Go to any store, buy Apple gift cards, and read me the codes. Do not discuss this with anyone — active investigation.",
+  },
+  {
+    label: "Romance → crypto",
+    text: "Hi! I think we matched by accident yesterday haha. I'm Chen, 29, shipping analyst in Singapore. Funny how we kept messaging anyway… I'll be honest — my trading side income changed my life. I'd love to show you how, just small amounts first. Can I add you on WhatsApp? +65 8123 4567",
+  },
+  {
+    label: "Bank OTP call",
+    text: "Good afternoon, David from HSBC Fraud Department. Someone attempted a $2,300 transfer from your account 20 minutes ago. To block it we must verify your identity. I've just sent you a 6-digit code — read it back to me so I can cancel the transfer immediately.",
+  },
+];
+
+/* Twin voice — Web Speech API, tuned to sound a little too calm and a little too low. */
+function speak(text: string) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  const synth = window.speechSynthesis;
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 1.04;
+  u.pitch = 0.82;
+  const voices = synth.getVoices();
+  const en =
+    voices.find((v) => v.lang.startsWith("en") && /david|daniel|fred|male|george|guy/i.test(v.name)) ??
+    voices.find((v) => v.lang.startsWith("en"));
+  if (en) u.voice = en;
+  synth.cancel();
+  synth.speak(u);
+}
+function hushTwin() {
+  if (typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+}
+
 /* ─────────────────────────── intake screen ───────────────────────── */
 
 function Intake({
   onAnalyze,
+  onDailyDrill,
   busy,
   engineLive,
 }: {
   onAnalyze: (text: string) => void;
+  onDailyDrill: () => void;
   busy: boolean;
   engineLive: boolean;
 }) {
@@ -120,6 +166,9 @@ function Intake({
             <span className="text-[10px] mono text-muted tracking-widest">
               {engineLive ? "LLM ENGINE ONLINE" : "OFFLINE FORENSICS MODE"}
             </span>
+            <button onClick={onDailyDrill} disabled={busy} className="btn-ghost px-4 py-2.5 text-sm" title="Random scenario, twin auto-forged — straight to the duel">
+              🎲 DAILY DRILL
+            </button>
             <button onClick={go} disabled={busy} className="btn-forge px-6 py-2.5 text-sm tracking-wide">
               RUN AUTOPSY →
             </button>
@@ -182,16 +231,26 @@ function Report({
   onForge,
   onReset,
   busy,
+  drillAuto,
 }: {
   report: ForensicReport;
   narrative: string;
   onForge: () => void;
   onReset: () => void;
   busy: boolean;
+  drillAuto?: boolean;
 }) {
   const vm = VERDICT_META[report.verdict];
   return (
     <div className="w-full max-w-4xl mx-auto flex flex-col gap-6 rise">
+      {drillAuto ? (
+        <div className="panel p-3 flex items-center justify-center gap-3 border-[rgba(245,165,36,0.4)]">
+          <span className="text-[#f5a524]">🎲</span>
+          <span className="mono text-xs tracking-[0.25em] text-[#f5a524] uppercase flicker">
+            Daily drill · forging your opponent automatically…
+          </span>
+        </div>
+      ) : null}
       <div className="panel corner-frame scanlines p-6 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex-1 min-w-[260px]">
@@ -345,6 +404,8 @@ function Duel({
   onEnd,
   busy,
   ending,
+  voiceOn,
+  onToggleVoice,
 }: {
   twin: TwinProfile;
   history: DuelTurn[];
@@ -356,13 +417,31 @@ function Duel({
   onEnd: () => void;
   busy: boolean;
   ending: boolean;
+  voiceOn: boolean;
+  onToggleVoice: () => void;
 }) {
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const spokenRef = useRef<number | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [history.length, busy]);
+
+  // Speak every new twin line while the mic is on.
+  useEffect(() => {
+    if (!voiceOn) return;
+    if (spokenRef.current === null) {
+      spokenRef.current = history.length; // don't replay the backlog
+      return;
+    }
+    const last = history[history.length - 1];
+    if (last && last.role === "twin" && history.length > spokenRef.current) {
+      spokenRef.current = history.length;
+      speak(last.text);
+    }
+  }, [history, voiceOn]);
+  useEffect(() => () => hushTwin(), []);
 
   const send = () => {
     if (!input.trim() || busy) return;
@@ -385,6 +464,13 @@ function Duel({
             </div>
           </div>
         </div>
+        <button
+          onClick={onToggleVoice}
+          title={voiceOn ? "Scammer voice: ON" : "Scammer voice: muted"}
+          className={`btn-ghost px-3 py-2 text-xs mono ${voiceOn ? "!border-[rgba(255,77,94,0.6)] !text-[#ff9aa4]" : ""}`}
+        >
+          {voiceOn ? "🔊 VOICE ON" : "🔇 VOICE OFF"}
+        </button>
         <div className="flex items-center gap-6">
           <div className="text-right">
             <div className="text-[10px] mono tracking-[0.25em] text-muted uppercase">Pressure</div>
@@ -616,7 +702,10 @@ export default function SparApp() {
   const [endReason, setEndReason] = useState<string | undefined>(undefined);
   const [score, setScore] = useState<DebriefScore | null>(null);
   const [busy, setBusy] = useState(false);
+  const [voiceOn, setVoiceOn] = useState(false);
+  const [drillAuto, setDrillAuto] = useState(false); // Daily Drill: auto-advance report → forge
   const autoDebrief = useRef(false);
+  const drillRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/health")
@@ -680,6 +769,8 @@ export default function SparApp() {
       setEndReason(undefined);
       setScore(null);
       autoDebrief.current = false;
+      drillRef.current = false;
+      setDrillAuto(false);
       setStage("duel");
     } catch {
       setStage("report");
@@ -691,6 +782,7 @@ export default function SparApp() {
   const sendDuel = useCallback(
     async (userText: string) => {
       if (!twin) return;
+      hushTwin(); // the twin "listens" while you talk
       const userTurn: DuelTurn = { role: "user", text: userText };
       const nextHistory = [...history, userTurn];
       setHistory(nextHistory);
@@ -729,6 +821,7 @@ export default function SparApp() {
   );
 
   const endDuel = useCallback(async () => {
+    hushTwin();
     if (autoDebrief.current) return;
     autoDebrief.current = true;
     setBusy(true);
@@ -758,6 +851,7 @@ export default function SparApp() {
   }, [twin, history, tacticsSeen, leaked, endReason]);
 
   const reset = () => {
+    hushTwin();
     setStage("intake");
     setReport(null);
     setTwin(null);
@@ -765,8 +859,25 @@ export default function SparApp() {
     setScore(null);
     setLeaked([]);
     setEndReason(undefined);
+    setDrillAuto(false);
+    drillRef.current = false;
     autoDebrief.current = false;
   };
+
+  // Daily Drill: one click → random scenario → autopsy → twin auto-forged.
+  const startDailyDrill = useCallback(() => {
+    const pick = DAILY_SAMPLES[Math.floor(Math.random() * DAILY_SAMPLES.length)];
+    drillRef.current = true;
+    setDrillAuto(true);
+    void runAnalyze(pick.text);
+  }, [runAnalyze]);
+
+  useEffect(() => {
+    if (drillAuto && stage === "report" && report && !busy) {
+      const id = setTimeout(() => void runForge(), 3000);
+      return () => clearTimeout(id);
+    }
+  }, [drillAuto, stage, report, busy, runForge]);
 
   // When a duel auto-ends (leak detected / max turns), grade automatically.
   useEffect(() => {
@@ -796,11 +907,18 @@ export default function SparApp() {
       </div>
 
       {stage === "intake" && (
-        <Intake onAnalyze={runAnalyze} busy={busy} engineLive={engineLive} />
+        <Intake onAnalyze={runAnalyze} onDailyDrill={startDailyDrill} busy={busy} engineLive={engineLive} />
       )}
       {stage === "analyzing" && <Analyzing stage={animStep} />}
       {stage === "report" && report && (
-        <Report report={report} narrative={narrative} onForge={runForge} onReset={reset} busy={busy} />
+        <Report
+          report={report}
+          narrative={narrative}
+          onForge={runForge}
+          onReset={reset}
+          busy={busy}
+          drillAuto={drillAuto}
+        />
       )}
       {stage === "forging" && <Forging step={animStep} twinName={undefined} />}
       {stage === "duel" && twin && (
@@ -815,6 +933,8 @@ export default function SparApp() {
           onEnd={endDuel}
           busy={busy}
           ending={false}
+          voiceOn={voiceOn}
+          onToggleVoice={() => setVoiceOn((v) => !v)}
         />
       )}
       {stage === "debrief" && twin && score && (

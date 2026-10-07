@@ -3,11 +3,20 @@
 > **ForgeHacks 2026 · Track: AI + Cybersecurity**
 > Don't just detect scams — learn to kill them.
 
-SPAR is an anti-scam **combat simulator**, not another detector. Paste the scam message you received and SPAR runs a three-stage pipeline:
+SPAR is an anti-scam **combat simulator**, not another detector. Paste the scam message you received (or hit **🎲 Daily Drill** for a random scenario) and SPAR runs a three-stage pipeline:
+
+![The Duel](docs/03-duel.png)
+
+*The Duel: a forged twin escalates live while tactic chips surface each manipulation pattern it deploys.*
+
+| | | |
+|---|---|---|
+| ![Intake](docs/01-intake.png) | ![Autopsy](docs/02-autopsy.png) | ![Debrief](docs/04-debrief.png) |
+| *Intake* | *Autopsy* | *Debrief* |
 
 1. **🧪 Autopsy** — A deterministic forensics engine matches the message against **14 manipulation signatures** (false urgency, authority impersonation, OTP fishing, secrecy demands, remote-access demands…), scores emotional pressure levers (urgency / fear / greed / obedience), classifies the scam family, and generates a counter-strategy. An LLM narrative layer explains *how* the con works in plain language, quoting the actual evidence.
 2. **🔥 Digital Twin** — The scammer's psychology is rebuilt as a **training sparring partner**: persona, escalation ladder (patient → pushy → authoritarian → threatening → retreat), behavioral constraints — forged by the LLM from your specific message, or drawn from a handcrafted offline library.
-3. **🥊 The Duel** — You spar against the twin in a live escalation drill. A **pressure gauge** responds to your replies in real time; the twin escalates when you hesitate and deploys new tactics as it climbs its ladder. Leak detection ends the drill the moment you'd have handed over real data.
+3. **🥊 The Duel** — You spar against the twin in a live escalation drill. A **pressure gauge** responds to your replies in real time; the twin escalates when you hesitate and deploys new tactics as it climbs its ladder. Leak detection ends the drill the moment you'd have handed over real data. Optional **scammer voice** (browser speech synthesis) makes the pressure feel real.
 4. **📋 Debrief** — An LLM coach grades your defense (S/A/B/C/D), quotes your exact words back to you, and distills golden rules from *this* duel — turning one scary message into permanent skill.
 
 ## Why not just another scam detector?
@@ -30,7 +39,8 @@ Detectors answer *is this a scam?* — then leave you alone with a yes. SPAR's t
 
 - **Next.js 16 (App Router) + React 19 + TypeScript** — UI, server routes, end-to-end type safety
 - **Tailwind CSS 4** — custom forensic-lab design system (dark lab, CRT scanlines, stamps, gauges)
-- **Featherless AI** (OpenAI-compatible, 40k+ open models, served locally-configured) — four specialized LLM routes: forensic narrative, twin forging, live scammer method-acting, and duel debrief
+- **Featherless AI** (OpenAI-compatible, 20k+ open models) — four specialized LLM routes: forensic narrative, twin forging, live scammer method-acting, and duel debrief
+- **Verified model fallback chain** — every model live-tested against the catalog: `DeepSeek-V3-0324` → `Llama-3.3-70B-Instruct` → `Mistral-Small-24B` → `Qwen3-32B` (reasoning-model output normalized: think-blocks stripped, stray `reasoning` field rescued)
 - **Zero-dependency deterministic engine** — 14 hand-written manipulation signatures with evidence quotes; the app is **fully functional with no API key at all**
 
 ## Graceful degradation (by design)
@@ -73,6 +83,8 @@ src/
     types.ts                 # domain types
 scripts/smoke.mjs            # end-to-end pipeline smoke test
 ```
+
+`node scripts/smoke.mjs <port>` exercises all four stages against a running server and exits non-zero on any failure.
 
 ## Safety & ethics
 
