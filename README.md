@@ -3,6 +3,8 @@
 > **ForgeHacks 2026 · Track: AI + Cybersecurity**
 > Don't just detect scams — learn to kill them.
 
+**▶ Live demo: https://spar-anti-scam.vercel.app** (LLM mode enabled · no setup needed)
+
 SPAR is an anti-scam **combat simulator**, not another detector. Paste the scam message you received (or hit **🎲 Daily Drill** for a random scenario) and SPAR runs a three-stage pipeline:
 
 ![The Duel](docs/03-duel.png)
@@ -57,9 +59,10 @@ SPAR never shows a dead screen:
 npm install
 cp .env.example .env.local   # optional: add FEATHERLESS_API_KEY
 npm run dev                  # http://localhost:3000
+node scripts/smoke.mjs 3000  # or: node scripts/smoke.mjs https://spar-anti-scam.vercel.app
 ```
 
-Without a key you get Offline Forensics Mode. With a key, every stage is LLM-narrated and the twin improvises in real time.
+Without a key you get Offline Forensics Mode. With a key, every stage is LLM-narrated and the twin improvises in real time. The smoke script accepts either a local port or a full URL. The production deployment runs the full LLM pipeline: `FEATHERLESS_API_KEY` is a server-side env var and is never shipped to the browser.
 
 ## Project structure
 

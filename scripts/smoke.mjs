@@ -1,6 +1,6 @@
-/* Smoke-test the full SPAR pipeline against the running dev server. */
-const PORT = process.argv[2] ?? "52322";
-const B = `http://localhost:${PORT}`;
+/* Smoke-test the full SPAR pipeline against a running dev server or a deployed URL. */
+const arg = process.argv[2] ?? "52322";
+const B = arg.includes("://") ? arg.replace(/\/$/, "") : `http://localhost:${arg}`;
 
 async function post(path, body) {
   const res = await fetch(`${B}${path}`, {
@@ -14,6 +14,7 @@ async function post(path, body) {
 }
 
 const health = await fetch(`${B}/api/health`).then((r) => r.json());
+console.log(`target: ${B}`);
 console.log("health:", JSON.stringify(health).slice(0, 160));
 
 const analysis = await post("/api/analyze", {
