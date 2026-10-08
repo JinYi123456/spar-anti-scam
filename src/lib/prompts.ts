@@ -16,7 +16,7 @@ You receive: the user's message text + deterministic findings (tactic hits, risk
 4. advice: 3-4 concrete counter-moves tailored to this text (imperative voice, max 140 chars each). Include at least one verification move and one containment move.
 5. safeReply: a short, safe, non-confrontational reply the user COULD send (or ignore) that neither engages nor reveals anything. Max 160 chars. If replying is unwise, output "No reply — do not engage."
 
-Rules: Never invent evidence not in the text or findings. Never give instructions for committing fraud. Plain language, zero jargon, zero emoji.
+Rules: Never invent evidence not in the text or findings. Never give instructions for committing fraud. Plain language, zero jargon, zero emoji. If the deterministic verdict is likely_safe, run the skeptic check: state in the narrative what a scam version of this message would have contained and why this text lacks it (false-positive handling) — and keep the headline calm, not alarmist.
 Return ONLY valid JSON:
 {"headline":"...","goal":"...","narrative":"...","advice":["...","...","..."],"safeReply":"..."}`;
 

@@ -50,6 +50,10 @@ const SAMPLES: { label: string; text: string }[] = [
     label: "Parcel fee",
     text: "Parcel Notification Ref #DL-99823: Your package is on HOLD at customs — clearance fee unpaid. Total due $24.09 via gift card or bank transfer. Unclaimed parcels are forfeited after 48 hours. Call now: +1 800 555 0199",
   },
+  {
+    label: "Genuine courier SMS",
+    text: "Hi Anna, your order #8841 was shipped today and arrives Thursday between 9am and 5pm. Track it anytime in the courier's official app — no reply needed, no action required.",
+  },
 ];
 
 /* Hidden drill bank — wider than the visible chips so Daily Drill stays fresh. */
@@ -226,10 +230,70 @@ function Analyzing({ stage }: { stage: number }) {
 
 /* ─────────────────────────── report screen ───────────────────────── */
 
+const CHAIN_COLOR: Record<string, string> = {
+  source: "#8fa3c0",
+  manipulation: "#f5a524",
+  action: "#ff4d5e",
+  impact: "#ff4d5e",
+};
+
+function AttackChain({ chain }: { chain: NonNullable<ForensicReport["chain"]> }) {
+  const [active, setActive] = useState<string>(
+    chain.find((n) => n.kind === "action")?.id ?? chain[chain.length - 1].id,
+  );
+  const activeNode = chain.find((n) => n.id === active) ?? chain[0];
+  return (
+    <div className="grid sm:grid-cols-[minmax(0,220px)_1fr] gap-5 items-start">
+      <div className="flex flex-col">
+        {chain.map((n, i) => {
+          const color = CHAIN_COLOR[n.kind] ?? "#8fa3c0";
+          const clickable = n.kind === "manipulation" || n.kind === "action";
+          return (
+            <div key={n.id}>
+              {i > 0 ? <div className="w-px h-3 ml-[13px] bg-[#2a3648]" /> : null}
+              <button
+                onClick={() => clickable && setActive(n.id)}
+                disabled={!clickable}
+                className={`flex items-center gap-2.5 text-left ${clickable ? "cursor-pointer" : "cursor-default"} group`}
+              >
+                <span
+                  className="w-[26px] h-[26px] shrink-0 rounded-lg border flex items-center justify-center mono text-[10px] transition-all"
+                  style={{
+                    color: active === n.id ? "#0b0f16" : color,
+                    borderColor: color,
+                    background: active === n.id ? color : "transparent",
+                  }}
+                >
+                  {i === 0 ? "◉" : i === chain.length - 1 ? "☠" : i}
+                </span>
+                <span
+                  className={`mono text-[11px] tracking-wide transition-colors ${
+                    active === n.id ? "text-[#ffd58a]" : clickable ? "text-muted group-hover:text-[#ffd58a]" : "text-muted"
+                  }`}
+                >
+                  {n.label}
+                </span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="panel p-4 bg-[rgba(255,77,94,0.04)] border-[rgba(255,77,94,0.2)]">
+        <div className="text-[10px] mono tracking-[0.3em] uppercase mb-2" style={{ color: CHAIN_COLOR[activeNode.kind] }}>
+          {activeNode.kind === "manipulation" ? "Break the chain here" : activeNode.kind === "action" ? "Cut the payload here" : "Node"}
+        </div>
+        <div className="mono text-xs text-[#ffd58a] mb-2">{activeNode.label}</div>
+        <p className="text-sm leading-relaxed">{activeNode.counter}</p>
+      </div>
+    </div>
+  );
+}
+
 function Report({
   report,
   narrative,
   sourceText,
+  piiRedacted,
   onForge,
   onReset,
   busy,
@@ -238,6 +302,7 @@ function Report({
   report: ForensicReport;
   narrative: string;
   sourceText: string;
+  piiRedacted: number;
   onForge: () => void;
   onReset: () => void;
   busy: boolean;
@@ -320,6 +385,22 @@ function Report({
             ) : null}
           </div>
         </div>
+
+        {report.chain && report.chain.length > 2 ? (
+          <div className="mt-6">
+            <div className="text-[10px] mono tracking-[0.3em] text-muted uppercase mb-3">⚔ Attack chain — where do you break it? (click a node)</div>
+            {report.intendedActions && report.intendedActions.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {report.intendedActions.map((a) => (
+                  <span key={a} className="px-2.5 py-1 rounded-full text-[11px] mono border border-[rgba(255,77,94,0.4)] text-[#ff9aa4] bg-[rgba(255,77,94,0.07)]">
+                    ATTACKER WANTS: {a}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            <AttackChain chain={report.chain} />
+          </div>
+        ) : null}
 
         <div className="mt-6">
           <div className="text-[10px] mono tracking-[0.3em] text-muted uppercase mb-3">Evidence — {report.tactics.length} pattern{report.tactics.length === 1 ? "" : "s"} matched</div>
@@ -412,6 +493,15 @@ function Report({
           <span className="shrink-0">⚠</span>
           <span>{report.uncertainty}</span>
         </div>
+        {piiRedacted > 0 ? (
+          <div className="mt-2 text-[11px] text-[#34d399] leading-relaxed flex gap-2">
+            <span className="shrink-0">🔒</span>
+            <span>
+              {piiRedacted} personal-data item{piiRedacted === 1 ? "" : "s"} redacted before this text reached the LLM —
+              the originals never left this device.
+            </span>
+          </div>
+        ) : null}
       </div>
 
       {showFileReport ? (
@@ -799,6 +889,7 @@ export default function SparApp() {
   const [text, setText] = useState("");
   const [report, setReport] = useState<ForensicReport | null>(null);
   const [narrative, setNarrative] = useState("");
+  const [piiRedacted, setPiiRedacted] = useState(0);
   const [twin, setTwin] = useState<TwinProfile | null>(null);
   const [history, setHistory] = useState<DuelTurn[]>([]);
   const [pressure, setPressure] = useState(0);
@@ -844,6 +935,7 @@ export default function SparApp() {
       if (!res.ok) throw new Error(data.error ?? "analyze failed");
       setReport(data.report);
       setNarrative(data.narrative ?? "");
+      setPiiRedacted(Number(data.piiRedacted) || 0);
       setStage("report");
     } catch {
       setReport(null);
@@ -1022,6 +1114,7 @@ export default function SparApp() {
           report={report}
           narrative={narrative}
           sourceText={text}
+          piiRedacted={piiRedacted}
           onForge={runForge}
           onReset={reset}
           busy={busy}

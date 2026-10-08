@@ -26,6 +26,24 @@ export interface DefensiveProtocol {
   counterfactual: string;
 }
 
+/** One node in the attacker's chain (borrowed strength: Manipulation Graph). */
+export interface ChainNode {
+  id: string;
+  label: string;
+  kind: "source" | "manipulation" | "action" | "impact";
+  /** How to break the attack at this node */
+  counter: string;
+}
+
+/** One node in the attacker's chain (borrowed strength: Manipulation Graph). */
+export interface ChainNode {
+  id: string;
+  label: string;
+  kind: "source" | "manipulation" | "action" | "impact";
+  /** How to break the attack at this node */
+  counter: string;
+}
+
 export interface TacticHit {
   /** Machine key of the tactic */
   key: string;
@@ -67,8 +85,12 @@ export interface ForensicReport {
   links?: UrlFinding[];
   /** PAUSE / VERIFY / REPORT defensive protocol + counterfactual check */
   protocol?: DefensiveProtocol;
-  /** Honest uncertainty statement shown with the verdict */
+  /** Uncertainty statement shown with the verdict */
   uncertainty?: string;
+  /** The attacker's chain: message → manipulation → action → impact */
+  chain?: ChainNode[];
+  /** What the attacker is trying to make the user DO */
+  intendedActions?: string[];
   /** Signature used to seed the digital twin */
   signature: string;
 }

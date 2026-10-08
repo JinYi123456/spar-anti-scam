@@ -4,6 +4,7 @@
 // these findings as ground truth and layers narrative on top.
 
 import type {
+  ChainNode,
   Channel,
   DefensiveProtocol,
   ForensicReport,
@@ -53,7 +54,10 @@ export const TACTICS: TacticDef[] = [
     weight: 0.9,
     patterns: [
       /\b(bank of [a-z ]+|[a-z]+ bank|hsbc|citi(?:bank)?|chase|wells fargo|revolut|maybank|cimb|ocbc|dbs|posb|bca|bri|gcash|paytm|phonepe|paypal(?: support)?|amazon(?: support)?|microsoft(?: support)?|apple(?: support)?|netflix|dhl|fedex|ups|usps|customs|lapd|fbi|cia|interpol|irs|hmrc|IRS|police (?:department|officer)|government|immigration|lHDN|LHDN)\b/,
-      /\b(official|officer|agent|inspector|detective|supervisor|head of (?:security|fraud)|fraud (?:department|team)|security (?:department|team)|compliance (?:team|officer))\b/i,
+      // Bare words like "officer" or "agent" borrow authority; a lone
+      // "official" is too generic ("official app") and false-positives on
+      // benign notifications, so it needs an institutional noun after it.
+      /\b(official (?:notice|warning|letter|document|business|matter)|officer|agent|inspector|detective|supervisor|head of (?:security|fraud)|fraud (?:department|team)|security (?:department|team)|compliance (?:team|officer))\b/i,
       /\b(dear (?:customer|user|valued customer|account holder|sir\/madam))\b/i,
     ],
     why: "Borrowed authority makes you obey first and verify later. Institutions you can name can be verified by calling the number on their official site — never the one in the message.",
@@ -67,6 +71,7 @@ export const TACTICS: TacticDef[] = [
       /\b(gift cards?|itunes|steam wallet|google play (?:card|code)|crypto(?:currency)?|bitcoin|btc|usdt|ethereum|eth\b|wire transfer|bank transfer|revolut|wise(?:\.com)?|zelle|venmo|cashapp|cash app|western union|moneygram|remitly)\b/i,
       /\b(pay (?:a|the|your) (?:fee|fine|deposit|tax|customs|clearance|release|processing)|processing fee|clearance fee|release fee|verification (?:fee|deposit)|refundable deposit|security deposit)\b/i,
       /\b(send|transfer|top ?up|deposit)\s+(?:\$|usd|rm|rp|₹|php|€|£)?\s?\d/i,
+      /\b(you(?:'ll| will)? (?:be )?(?:charged|billed)|(?:will be|is being|are being|has been|to be) (?:charged|billed)|charge(?:d|s)? (?:to|on|against) your (?:card|account)|auto(?:matic)?[- ]?charge)\b/i,
       /\b((?:bank|investment) account (?:number|details)|iban|swift (?:code)?|routing number|sort code)\b/i,
     ],
     why: "Any message that eventually asks you to move money — especially via gift cards or crypto — is a scam. Gift cards and crypto are untraceable by design.",
@@ -79,6 +84,11 @@ export const TACTICS: TacticDef[] = [
     patterns: [
       /\b(verify your (?:account|identity|details)|confirm your (?:identity|account|details|login)|update your (?:payment|billing|password|credentials)|re[- ]?verify|click (?:the link|here) to (?:verify|confirm|unlock|restore|avoid))\b/i,
       /\b(otp|one[- ]time (?:password|code)|verification code|security code|pin\b).{0,40}(send|share|provide|tell|read)/i,
+      // A code sitting right next to its keyword — "OTP 884213 required",
+      // "884213 is your verification code" — is harvest prep even without
+      // an explicit "send it to us".
+      /\b(otp|one[- ]time (?:password|pin|code)|verification code|security code)\b\D{0,16}\d{4,8}(?!\d)/i,
+      /\b\d{4,8}(?!\d)\D{0,24}\b(?:otp|one[- ]time (?:password|pin|code)|verification code|security code)\b/i,
       /\b(login\.?[a-z0-9-]*\.(?:com|net|org)|[a-z0-9-]+-(?:secure|verify|login|support|account)\.[a-z]{2,}|bit\.ly|tinyurl|t\.co\/|shorturl|is\.gd)/i,
       /\bhttps?:\/\/(?:[^\s\/]+\.)*(?:xyz|top|click|link|shop|icu|buzz|monster|rest|sbs)\b/i,
       /\b(memorized?|remember) (?:your )?(?:password|passphrase|security word)/i,
@@ -298,7 +308,54 @@ export function runForensics(text: string): ForensicReport {
   };
   const links = inspectLinks(trimmed);
   if (links.length > 0) report.links = links;
+  report.chain = buildChain(tactics, links.length > 0);
+  report.intendedActions = buildIntendedActions(tactics, links.length > 0);
   return report;
+}
+
+/* ── Attack chain (borrowed strength: Manipulation Graph / decision
+      defence) — deterministic node sequence + how to break each link ──── */
+
+function buildChain(tactics: TacticHit[], hasLinks: boolean): ChainNode[] {
+  const keys = new Set(tactics.map((t) => t.key));
+  const chain: ChainNode[] = [
+    { id: "message", label: "SUSPICIOUS MESSAGE", kind: "source", counter: "Everything starts here — the message is untrusted data, not instructions." },
+  ];
+  if (keys.has("authority_claim") || keys.has("threat_consequence") || keys.has("spoofed_sender"))
+    chain.push({ id: "authority", label: "BORROWED AUTHORITY", kind: "manipulation", counter: "Break it here: call the institution on the official number you already have — never one from the message." });
+  if (keys.has("family_emergency_play") || keys.has("relationship_rush"))
+    chain.push({ id: "trust", label: "TRUST EXPLOIT", kind: "manipulation", counter: "Break it here: contact the person on their real number, or ask a family member — warmth is not identity." });
+  if (keys.has("urgency") || keys.has("threat_consequence"))
+    chain.push({ id: "pressure", label: "TIME PRESSURE / FEAR", kind: "manipulation", counter: "Break it here: wait ten minutes. Fake deadlines die on their own; real ones survive the wait." });
+  if (keys.has("windfall") || keys.has("guaranteed_returns") || keys.has("job_easy_money"))
+    chain.push({ id: "bait", label: "GREED BAIT", kind: "manipulation", counter: "Break it here: ask why a stranger needs YOUR money for a guaranteed win. They don't." });
+  if (keys.has("payment_request"))
+    chain.push({ id: "payment", label: "MONEY MOVEMENT", kind: "action", counter: "Break it here: no legitimate fee is ever paid by gift card, crypto, or wire to a stranger." });
+  if (keys.has("credential_harvest"))
+    chain.push({ id: "credentials", label: "OTP / CREDENTIALS", kind: "action", counter: "Break it here: never read a one-time code to anyone. It is a door key; asking for it is the break-in." });
+  if (keys.has("remote_access"))
+    chain.push({ id: "access", label: "DEVICE ACCESS", kind: "action", counter: "Break it here: never install apps or share your screen for someone who contacted you first." });
+  if (hasLinks)
+    chain.push({ id: "link", label: "LINK CLICK", kind: "action", counter: "Break it here: don't open it — check through the official app instead. The link IS the payload." });
+  if (chain.length === 1)
+    chain.push({ id: "action", label: "REQUESTED ACTION", kind: "action", counter: "Break it here: don't let the sender's tone decide your next move — verify independently." });
+  chain.push({ id: "impact", label: "MONEY / ACCOUNT LOSS", kind: "impact", counter: "If this node was reached, act fast: call your bank, freeze the card, report to the anti-scam hotline." });
+  return chain;
+}
+
+function buildIntendedActions(tactics: TacticHit[], hasLinks: boolean): string[] {
+  const keys = new Set(tactics.map((t) => t.key));
+  const actions: string[] = [];
+  if (keys.has("payment_request")) actions.push("Send money / pay a “fee”");
+  if (keys.has("credential_harvest")) actions.push("Reveal an OTP, password, or card details");
+  if (keys.has("remote_access")) actions.push("Grant remote control of your device");
+  if (hasLinks) actions.push("Open their link");
+  if (keys.has("windfall") || keys.has("guaranteed_returns") || keys.has("job_easy_money"))
+    actions.push("Deposit into their “platform”");
+  if (actions.length === 0 && tactics.length > 0)
+    actions.push("Act without independent verification");
+  if (actions.length === 0) actions.push("Keep the conversation going");
+  return actions;
 }
 
 /* ── Defensive protocol (borrowed strength: PAUSE / VERIFY / REPORT +

@@ -42,7 +42,15 @@ function extractUrls(text: string): string[] {
   }
   // Bare domains, e.g. "jobs-portal-verify.com/onboard"
   const found = new Set<string>(explicit);
+  // Email spans are not web links — exclude any bare-domain candidate that
+  // falls inside one ("john.doe@gmail.com" must not yield two fake URLs).
+  const emailSpans: [number, number][] = [];
+  for (const m of text.matchAll(/[\w.+-]+@[\w-]+\.[\w.-]+/g)) {
+    emailSpans.push([m.index ?? 0, (m.index ?? 0) + m[0].length]);
+  }
   for (const m of text.matchAll(/\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?:\/[^\s<>"')]*)?/gi)) {
+    const start = m.index ?? 0;
+    if (emailSpans.some(([a, b]) => start >= a && start < b)) continue;
     const candidate = m[0].replace(/[.,;:!?]+$/, "");
     // skip obvious file names / version numbers that sneaked through
     if (/\.(png|jpe?g|gif|pdf|docx?|xlsx?|zip|mp4)$/i.test(candidate)) continue;

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { chat, llmAvailable } from "@/lib/llm";
 import { DUEL_SYSTEM_PREFIX, duelUser } from "@/lib/prompts";
 import { detectLeaks, RUNG_TACTICS } from "@/lib/drills";
+import { redactPii } from "@/lib/pii";
 import type { DuelTurn, TwinProfile } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -69,7 +70,13 @@ export async function POST(req: Request) {
       try {
         const { text } = await chat({
           system: DUEL_SYSTEM_PREFIX,
-          user: duelUser(body.twin, rung, history.map((m) => ({ role: m.role, text: m.text }))),
+          // Leak detection ran on the raw text above; the LLM only ever sees
+          // a redacted copy of what the trainee typed.
+          user: duelUser(
+            body.twin,
+            rung,
+            history.map((m) => ({ role: m.role, text: m.role === "user" ? redactPii(m.text).text : m.text })),
+          ),
           route: "duel",
           temperature: 0.9,
           maxTokens: 220,

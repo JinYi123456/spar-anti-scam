@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runForensics } from "@/lib/rules";
 import { chat, parseJsonLoose, llmAvailable } from "@/lib/llm";
 import { ANALYZE_SYSTEM, analyzeUser } from "@/lib/prompts";
+import { redactPii } from "@/lib/pii";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -25,9 +26,12 @@ export async function POST(req: Request) {
 
     if (llmAvailable()) {
       try {
+        // PII never leaves the server: the LLM sees a redacted copy, while
+        // the deterministic report keeps the user's original evidence quotes.
+        const { text: safeText, findings: pii } = redactPii(text);
         const { text: raw } = await chat({
           system: ANALYZE_SYSTEM,
-          user: analyzeUser(text, report),
+          user: analyzeUser(safeText, report),
           route: "analyze",
           json: true,
           temperature: 0.4,
@@ -45,6 +49,7 @@ export async function POST(req: Request) {
           return NextResponse.json({
             report,
             narrative: String(n.narrative ?? "").slice(0, 900),
+            piiRedacted: pii.length,
             engine: "llm",
           });
         }

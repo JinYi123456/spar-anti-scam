@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { chat, parseJsonLoose, llmAvailable } from "@/lib/llm";
 import { FORGE_SYSTEM, forgeUser } from "@/lib/prompts";
 import { offlineTwinFor } from "@/lib/drills";
+import { redactPii } from "@/lib/pii";
 import type { ForensicReport, TwinProfile } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
       try {
         const { text: raw } = await chat({
           system: FORGE_SYSTEM,
-          user: forgeUser(report, text),
+          user: forgeUser(report, redactPii(text).text),
           route: "forge",
           json: true,
           temperature: 0.8,
