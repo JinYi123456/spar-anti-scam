@@ -16,7 +16,7 @@ SPAR is an anti-scam **combat simulator**, not another detector. Paste the scam 
 | ![Intake](docs/01-intake.png) | ![Autopsy](docs/02-autopsy.png) | ![Debrief](docs/04-debrief.png) |
 | *Intake* | *Autopsy* | *Debrief* |
 
-1. **🧪 Autopsy** — A deterministic forensics engine matches the message against **14 manipulation signatures** (false urgency, authority impersonation, OTP fishing, secrecy demands, remote-access demands…), scores emotional pressure levers (urgency / fear / greed / obedience), classifies the scam family, and generates a counter-strategy. Every link in the message runs through an offline **🔗 Link Autopsy** (unencrypted http, raw-IP hosts, punycode lookalikes, shorteners, high-abuse TLDs, brand-token impersonation, @-traps — each flagged with a risk score and its reason). A **PAUSE · VERIFY · REPORT** defensive protocol with a counterfactual reality check (“what would have to be true for this to be legitimate?”) turns the verdict into a safe next step. An LLM narrative layer explains *how* the con works in plain language, quoting the actual evidence.
+1. **🧪 Autopsy** — A deterministic forensics engine matches the message against **14 manipulation signatures** (false urgency, authority impersonation, OTP fishing, secrecy demands, remote-access demands…), scores emotional pressure levers (urgency / fear / greed / obedience), classifies the scam family, and generates a counter-strategy. Every link in the message runs through an offline **🔗 Link Autopsy** (unencrypted http, raw-IP hosts, punycode lookalikes, shorteners, high-abuse TLDs, brand-token impersonation, @-traps — each flagged with a risk score and its reason). A deterministic **⚔ Attack Chain** maps how the message escalates from manipulation to money/credential loss — click any node to see exactly how to break the chain there — and a **PAUSE · VERIFY · REPORT** defensive protocol with a counterfactual reality check (“what would have to be true for this to be legitimate?”) turns the verdict into a safe next step. A benign paste (try the **Genuine courier SMS** sample) triggers a skeptic check that explains why it was *not* flagged. An LLM narrative layer explains *how* the con works in plain language, quoting the actual evidence.
 2. **🔥 Digital Twin** — The scammer's psychology is rebuilt as a **training sparring partner**: persona, escalation ladder (patient → pushy → authoritarian → threatening → retreat), behavioral constraints — forged by the LLM from your specific message, or drawn from a handcrafted offline library.
 3. **🥊 The Duel** — You spar against the twin in a live escalation drill. A **pressure gauge** responds to your replies in real time; the twin escalates when you hesitate and deploys new tactics as it climbs its ladder. Leak detection ends the drill the moment you'd have handed over real data. Optional **scammer voice** (browser speech synthesis) makes the pressure feel real.
 4. **📋 Debrief** — An LLM coach grades your defense (S/A/B/C/D), quotes your exact words back to you, and distills golden rules from *this* duel — turning one scary message into permanent skill.
@@ -44,6 +44,7 @@ Detectors answer *is this a scam?* — then leave you alone with a yes. SPAR's t
 - **Next.js 16 (App Router) + React 19 + TypeScript** — UI, server routes, end-to-end type safety
 - **Tailwind CSS 4** — custom forensic-lab design system (dark lab, CRT scanlines, stamps, gauges)
 - **Featherless AI** (OpenAI-compatible, 20k+ open models) — four specialized LLM routes: forensic narrative, twin forging, live scammer method-acting, and duel debrief
+- **PII redaction before hosted inference** — card numbers (Luhn-validated), OTP codes, email addresses, phone numbers and NRIC/SSN patterns are scrubbed server-side before any text reaches the LLM, across all four routes; evidence quotes are extracted locally from the original, and a privacy chip in the report states exactly how many items were redacted
 - **Verified model fallback chain** — every model live-tested against the catalog: `DeepSeek-V3-0324` → `Llama-3.3-70B-Instruct` → `Mistral-Small-24B` → `Qwen3-32B` (reasoning-model output normalized: think-blocks stripped, stray `reasoning` field rescued)
 - **Zero-dependency deterministic engine** — 14 hand-written manipulation signatures with evidence quotes, structural link inspection, and the defensive-protocol generator; the app is **fully functional with no API key at all**
 
@@ -81,8 +82,9 @@ src/
     spar-app.tsx             # full flow state machine
     gauges.tsx               # dial, pressure bars, sparkline, typewriter
   lib/
-    rules.ts                 # deterministic forensics engine
+    rules.ts                 # deterministic forensics engine + attack chain
     urls.ts                  # offline link inspector (structural risk flags)
+    pii.ts                   # PII redaction before hosted LLM inference
     report.ts                # incident-report builder + data redaction
     drills.ts                # offline twin library + leak detection
     prompts.ts               # LLM prompt engineering
@@ -97,7 +99,7 @@ scripts/smoke.mjs            # end-to-end pipeline smoke test
 
 - The digital twin is a **training tool**: it improvises only generic fraud-script dialogue and is hard-scrubbed of working links, real numbers, and actionable harm.
 - No user data leaves the app except message text sent to the configured LLM API; no accounts, no database, no tracking.
-- **Honest limitations:** the link inspector is structural heuristics only — no URL-reputation, sender-identity, or QR-decode lookup — and the autopsy is signature-based, so novel wording with the usual levers can score low. Every verdict ships with an uncertainty statement; SPAR is decision support, not proof. QR-code scanning and URL-reputation integration are the natural next steps.
+- **Honest limitations:** the link inspector is structural heuristics only — no URL-reputation, sender-identity, or QR-decode lookup — and the autopsy is signature-based, so novel wording with the usual levers can score low. PII redaction is regex-first and deliberately over-redacts (dates and reference numbers can be masked); the redacted copy goes to the LLM while originals stay in your session. Every verdict ships with an uncertainty statement; SPAR is decision support, not proof. QR-code scanning and URL-reputation integration are the natural next steps.
 
 ## Credits
 
