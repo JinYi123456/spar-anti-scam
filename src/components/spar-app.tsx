@@ -9,6 +9,7 @@ import type {
   ThreatFamily,
   TwinProfile,
 } from "@/lib/types";
+import { buildIncidentReport } from "@/lib/report";
 
 /* ─────────────────────────── small atoms ─────────────────────────── */
 
@@ -197,8 +198,8 @@ function Intake({
 const AUTOPSY_STEPS = [
   "Extracting specimen…",
   "Matching 14 manipulation signatures…",
+  "Inspecting links & destinations…",
   "Profiling emotional levers…",
-  "Tracing the con's goal vector…",
   "Writing autopsy report…",
 ];
 
@@ -228,6 +229,7 @@ function Analyzing({ stage }: { stage: number }) {
 function Report({
   report,
   narrative,
+  sourceText,
   onForge,
   onReset,
   busy,
@@ -235,12 +237,33 @@ function Report({
 }: {
   report: ForensicReport;
   narrative: string;
+  sourceText: string;
   onForge: () => void;
   onReset: () => void;
   busy: boolean;
   drillAuto?: boolean;
 }) {
   const vm = VERDICT_META[report.verdict];
+  const [showFileReport, setShowFileReport] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const incident = showFileReport ? buildIncidentReport(report, sourceText) : "";
+  const copyIncident = async () => {
+    try {
+      await navigator.clipboard.writeText(incident);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable — user can select manually */
+    }
+  };
+  const downloadIncident = () => {
+    const blob = new Blob([incident], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `spar-incident-report-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
   return (
     <div className="w-full max-w-4xl mx-auto flex flex-col gap-6 rise">
       {drillAuto ? (
@@ -320,22 +343,106 @@ function Report({
           )}
         </div>
 
+        {report.links && report.links.length > 0 ? (
+          <div className="mt-6">
+            <div className="text-[10px] mono tracking-[0.3em] text-muted uppercase mb-3">
+              🔗 Link autopsy — {report.links.length} destination{report.links.length === 1 ? "" : "s"} inspected (never open these to check)
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {report.links.map((l, i) => {
+                const lc = l.risk >= 60 ? "#ff4d5e" : l.risk >= 30 ? "#f5a524" : "#34d399";
+                return (
+                  <div key={i} className="panel p-4 rise" style={{ animationDelay: `${i * 70}ms` }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="mono text-xs text-[#22d3ee] break-all">{l.url.length > 60 ? l.url.slice(0, 60) + "…" : l.url}</span>
+                      <span className="mono text-[10px] shrink-0" style={{ color: lc }}>{l.risk}/100</span>
+                    </div>
+                    {l.flags.length > 0 ? (
+                      <ul className="mt-2 space-y-1">
+                        {l.flags.map((f) => (
+                          <li key={f.label} className="text-xs leading-relaxed">
+                            <span style={{ color: lc }}>▸ {f.label}</span>
+                            <span className="text-muted"> — {f.why}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <div className="text-xs mt-2" style={{ color: lc }}>{l.note}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
         <div className="mt-6 panel p-5">
-          <div className="text-[10px] mono tracking-[0.3em] text-muted uppercase mb-3">Counter-strategy</div>
-          <ol className="space-y-2.5">
-            {report.advice.map((a, i) => (
-              <li key={i} className="text-sm flex gap-3">
-                <span className="mono text-[#f5a524] text-xs pt-0.5">{String(i + 1).padStart(2, "0")}</span>
-                <span className="leading-relaxed">{a}</span>
-              </li>
-            ))}
-          </ol>
+          <div className="text-[10px] mono tracking-[0.3em] text-muted uppercase mb-4">Defensive protocol — PAUSE · VERIFY · REPORT</div>
+          <div className="grid sm:grid-cols-3 gap-4">
+            {[
+              ["1 · PAUSE", "#ffd58a", report.protocol?.pause],
+              ["2 · VERIFY", "#22d3ee", report.protocol?.verify],
+              ["3 · REPORT", "#34d399", report.protocol?.report],
+            ].map(([label, color, body]) =>
+              body ? (
+                <div key={label}>
+                  <div className="mono text-[11px] tracking-[0.2em] uppercase mb-1.5" style={{ color: color as string }}>{label}</div>
+                  <p className="text-xs leading-relaxed text-muted">{body}</p>
+                </div>
+              ) : null,
+            )}
+          </div>
+          <div className="mt-4 pt-3 border-t border-[#1c2536]">
+            <div className="text-[10px] mono tracking-[0.25em] text-[#f5a524] uppercase mb-1">Reality check — what would have to be true?</div>
+            <p className="text-sm leading-relaxed">{report.protocol?.counterfactual}</p>
+          </div>
+          <div className="mt-4 pt-3 border-t border-[#1c2536]">
+            <div className="text-[10px] mono tracking-[0.3em] text-muted uppercase mb-3">Counter-strategy</div>
+            <ol className="space-y-2.5">
+              {report.advice.map((a, i) => (
+                <li key={i} className="text-sm flex gap-3">
+                  <span className="mono text-[#f5a524] text-xs pt-0.5">{String(i + 1).padStart(2, "0")}</span>
+                  <span className="leading-relaxed">{a}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+
+        <div className="mt-4 text-[11px] text-muted leading-relaxed flex gap-2">
+          <span className="shrink-0">⚠</span>
+          <span>{report.uncertainty}</span>
         </div>
       </div>
+
+      {showFileReport ? (
+        <div className="panel p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div className="text-[10px] mono tracking-[0.3em] text-muted uppercase">📋 Scam incident report — auto-redacted, ready to file</div>
+            <div className="flex gap-2">
+              <button onClick={copyIncident} className="btn-ghost px-3 py-1.5 text-xs mono">
+                {copied ? "✓ COPIED" : "COPY"}
+              </button>
+              <button onClick={downloadIncident} className="btn-ghost px-3 py-1.5 text-xs mono">
+                DOWNLOAD .TXT
+              </button>
+              <button onClick={() => setShowFileReport(false)} className="btn-ghost px-3 py-1.5 text-xs mono">
+                CLOSE
+              </button>
+            </div>
+          </div>
+          <pre className="text-xs leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto bg-[rgba(0,0,0,0.25)] rounded-lg p-4 border border-[#1c2536]">{incident}</pre>
+          <p className="text-[11px] text-muted mt-2">
+            Card / account / OTP digits and email addresses are masked automatically. Links and phone numbers are kept — they are the evidence.
+          </p>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center justify-center gap-3">
         <button onClick={onReset} className="btn-ghost px-5 py-2.5 text-sm">
           ← New autopsy
+        </button>
+        <button onClick={() => setShowFileReport((s) => !s)} className="btn-ghost px-5 py-2.5 text-sm">
+          📋 {showFileReport ? "Hide report" : "File this scam"}
         </button>
         <button onClick={onForge} disabled={busy} className="btn-forge px-8 py-3 text-sm tracking-wide">
           ⚡ FORGE THE DIGITAL TWIN →
@@ -914,6 +1021,7 @@ export default function SparApp() {
         <Report
           report={report}
           narrative={narrative}
+          sourceText={text}
           onForge={runForge}
           onReset={reset}
           busy={busy}

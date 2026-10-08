@@ -1,6 +1,8 @@
 // ── SPAR core domain types ──────────────────────────────────────────
 // Pipeline: Analyze (forensics) → Forge (digital twin scammer) → Duel (drills)
 
+import type { UrlFinding } from "./urls";
+
 export type ThreatFamily =
   | "authority_impersonation" // bank, police, government, IT support
   | "family_emergency"        // "Hi Mom" voice-clone, kidnapped relative
@@ -14,6 +16,15 @@ export type ThreatFamily =
 export type Channel = "sms" | "whatsapp" | "email" | "call_transcript" | "chat" | "social";
 
 export type Verdict = "scam" | "suspicious" | "likely_safe";
+
+/** Three-step defensive protocol surfaced with every autopsy. */
+export interface DefensiveProtocol {
+  pause: string;
+  verify: string;
+  report: string;
+  /** "For this to be legitimate, X would have to be true — and it isn't." */
+  counterfactual: string;
+}
 
 export interface TacticHit {
   /** Machine key of the tactic */
@@ -52,6 +63,12 @@ export interface ForensicReport {
   advice: string[];
   /** Safe reply the user could send — never confrontational */
   safeReply?: string;
+  /** Per-link structural inspection (borrowed strength: link safety agent) */
+  links?: UrlFinding[];
+  /** PAUSE / VERIFY / REPORT defensive protocol + counterfactual check */
+  protocol?: DefensiveProtocol;
+  /** Honest uncertainty statement shown with the verdict */
+  uncertainty?: string;
   /** Signature used to seed the digital twin */
   signature: string;
 }

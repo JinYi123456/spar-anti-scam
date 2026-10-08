@@ -5,11 +5,13 @@
 
 import type {
   Channel,
+  DefensiveProtocol,
   ForensicReport,
   TacticHit,
   ThreatFamily,
   Verdict,
 } from "./types";
+import { inspectLinks } from "./urls";
 
 interface TacticDef {
   key: string;
@@ -275,7 +277,7 @@ export function runForensics(text: string): ForensicReport {
   if (/id|ic |passport|nric|ssn|date of birth/i.test(trimmed)) hooks.push("Identity documents / personal data");
   if (hooks.length === 0) hooks.push("Your trust and a reply");
 
-  return {
+  const report: ForensicReport = {
     verdict,
     riskScore,
     headline: FAMILY_HEADLINES[family],
@@ -289,8 +291,63 @@ export function runForensics(text: string): ForensicReport {
         : "Push you into acting before you verify — through the channel they control.",
     hooks,
     advice: buildAdvice(family, tactics),
+    protocol: buildProtocol(family, tactics, verdict),
+    uncertainty:
+      "Heuristic assessment: 14 manipulation signatures + structural link checks. No sender-identity or URL-reputation lookup is performed. “Likely safe” is not proof of safety — when money or identity is involved, always verify through a channel you choose yourself.",
     signature: buildSignature(trimmed, tactics, family),
   };
+  const links = inspectLinks(trimmed);
+  if (links.length > 0) report.links = links;
+  return report;
+}
+
+/* ── Defensive protocol (borrowed strength: PAUSE / VERIFY / REPORT +
+      the counterfactual check — “what would have to be true?”) ───────── */
+
+const COUNTERFACTUALS: Record<ThreatFamily, string> = {
+  authority_impersonation:
+    "For this to be legitimate, your bank/agency would have to contact you out of the blue, impose a deadline, and refuse verification — none of which real institutions do. If it were real, it would survive you calling the official number yourself.",
+  family_emergency:
+    "For this to be legitimate, your relative would have to be unreachable on their usual number AND uncontactable through any other family member. A real emergency survives a call-back; a cloned voice does not.",
+  investment_romance:
+    "For this to be legitimate, a stranger with a guaranteed-return system would have to need YOUR money. Real regulated returns are never guaranteed and never sold in DMs.",
+  job_task_scam:
+    "For this to be legitimate, a real employer would have to ask you to pay or use your own card to start work. Real jobs pay you; they never charge you to be paid.",
+  tech_support:
+    "For this to be legitimate, support you never contacted would have to already know about viruses on your machine and need remote access to fix them. Real support waits for your call and never watches your screen uninvited.",
+  phishing_account:
+    "For this to be legitimate, the service would have to verify you by SMS link instead of its own app — no real service does. A one-time code is a door key; nobody legitimate asks for yours.",
+  prize_delivery:
+    "For this to be legitimate, you would have owed a fee on something you never ordered, payable in gift cards. Prize and parcel fees you didn't create don't exist.",
+  generic:
+    "For this to be legitimate, urgency, secrecy, and an off-channel payment would all have to be normal business practice — they aren't. Verify through a channel you choose before acting.",
+};
+
+function buildProtocol(family: ThreatFamily, tactics: TacticHit[], verdict: Verdict): DefensiveProtocol {
+  const keys = new Set(tactics.map((t) => t.key));
+  const paused =
+    verdict === "likely_safe"
+      ? "No manipulation pressure detected — but don't let a calm tone do your thinking either. Nothing here requires action right now."
+      : "Stop. Do not reply, tap, pay, or call any number in the message. Urgency exists to stop you from exactly one thing: thinking.";
+
+  let verify: string;
+  if (keys.has("authority_claim") || keys.has("threat_consequence"))
+    verify = "Open the official app or type the institution's website yourself. Call the number printed on your card or official site — never one from this message.";
+  else if (keys.has("family_emergency_play"))
+    verify = "Call your relative on their usual number and check with another family member. Set a family safe-word today so any future “Hi Mom” is verifiable in five seconds.";
+  else if (keys.has("credential_harvest"))
+    verify = "Don't use the link. Open the service's app or type its address yourself and check your account/notifications there.";
+  else if (keys.has("payment_request") || keys.has("guaranteed_returns"))
+    verify = "Check the company's regulator register (e.g. your country's financial authority) and search the name plus “scam” before any money moves.";
+  else if (keys.has("remote_access"))
+    verify = "If you're worried about your device, run a scan yourself or call the vendor's official support line — not the one in this message.";
+  else
+    verify = "Verify the sender through an independent channel you choose yourself — official app, website, or a number you already trust.";
+
+  const report =
+    "Block and report: use the platform's report function (2 taps on most apps), forward SMS scams to your carrier's spam line, and if money or identity data was involved, file a report with your national anti-scam hotline or police cybercrime portal."
+  ;
+  return { pause: paused, verify, report, counterfactual: COUNTERFACTUALS[family] };
 }
 
 function buildAdvice(family: ThreatFamily, tactics: TacticHit[]): string[] {
