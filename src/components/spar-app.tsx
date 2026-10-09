@@ -912,10 +912,9 @@ export default function SparApp() {
       .catch(() => setEngineLive(false));
   }, []);
 
-  // fake step timers during analyzing/forging
+  // fake step timers during analyzing/forging (animStep reset where the stage is entered)
   useEffect(() => {
     if (stage === "analyzing" || stage === "forging") {
-      setAnimStep(0);
       const id = setInterval(() => setAnimStep((s) => Math.min(4, s + 1)), 550);
       return () => clearInterval(id);
     }
@@ -923,6 +922,7 @@ export default function SparApp() {
 
   const runAnalyze = useCallback(async (input: string) => {
     setText(input);
+    setAnimStep(0);
     setStage("analyzing");
     setBusy(true);
     try {
@@ -947,6 +947,7 @@ export default function SparApp() {
 
   const runForge = useCallback(async () => {
     if (!report) return;
+    setAnimStep(0);
     setStage("forging");
     setBusy(true);
     try {
@@ -1079,9 +1080,11 @@ export default function SparApp() {
   }, [drillAuto, stage, report, busy, runForge]);
 
   // When a duel auto-ends (leak detected / max turns), grade automatically.
+  // Deferred a tick so the grade transition isn't a synchronous setState in effect.
   useEffect(() => {
     if (stage === "debrief-wait" && !busy) {
-      endDuel();
+      const id = setTimeout(() => void endDuel(), 0);
+      return () => clearTimeout(id);
     }
   }, [stage, busy, endDuel]);
 

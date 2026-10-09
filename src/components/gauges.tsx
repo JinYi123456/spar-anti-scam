@@ -103,11 +103,20 @@ export function PressureBars({ pressure }: { pressure: { urgency: number; fear: 
 
 export function Typewriter({ text, speed = 14, className = "", onDone }: { text: string; speed?: number; className?: string; onDone?: () => void }) {
   const [shown, setShown] = useState("");
+  const [prevText, setPrevText] = useState(text);
   const doneRef = useRef(onDone);
-  doneRef.current = onDone;
+
+  // guarded render-time reset: restart the animation when text changes
+  if (prevText !== text) {
+    setPrevText(text);
+    setShown("");
+  }
 
   useEffect(() => {
-    setShown("");
+    doneRef.current = onDone;
+  });
+
+  useEffect(() => {
     let i = 0;
     const id = setInterval(() => {
       i += Math.max(1, Math.round(text.length / 140));

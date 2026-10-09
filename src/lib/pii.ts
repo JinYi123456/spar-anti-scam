@@ -61,12 +61,12 @@ export function redactPii(text: string): RedactResult {
 
   let out = text;
 
-  out = out.replace(NRIC_RE, (m) => {
+  out = out.replace(NRIC_RE, () => {
     const ph = placeholder("IC_NRIC");
     record("IC_NRIC", ph);
     return ph;
   });
-  out = out.replace(SSN_RE, (m) => {
+  out = out.replace(SSN_RE, () => {
     const ph = placeholder("SSN");
     record("SSN", ph);
     return ph;
@@ -77,17 +77,17 @@ export function redactPii(text: string): RedactResult {
     record("CREDIT_CARD", ph);
     return ph;
   });
-  out = out.replace(OTP_FORWARD_RE, (_m, head: string, code: string) => {
+  out = out.replace(OTP_FORWARD_RE, (_m, head: string) => {
     const ph = placeholder("OTP");
     record("OTP", ph);
     return head + ph;
   });
-  out = out.replace(EMAIL_RE, (m) => {
+  out = out.replace(EMAIL_RE, () => {
     const ph = placeholder("EMAIL");
     record("EMAIL", ph);
     return ph;
   });
-  out = out.replace(PHONE_RE, (m) => {
+  out = out.replace(PHONE_RE, () => {
     const ph = placeholder("PHONE_NUMBER");
     record("PHONE_NUMBER", ph);
     return ph;
